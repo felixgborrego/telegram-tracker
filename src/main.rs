@@ -16,6 +16,8 @@ struct Opts {
     telegram_api_id: String,
     #[clap(long)]
     telegram_api_hash: String,
+    #[clap(long, default_value = "false")]
+    print_outgoing: String,
 }
 
 fn main() {
@@ -30,5 +32,10 @@ fn main() {
         "Starting Telegram for: {}, api key: {}",
         opts.phone, opts.telegram_api_id
     );
-    telegram::start(opts.phone, opts.telegram_api_id, opts.telegram_api_hash);
+    telegram::start(
+        opts.phone,
+        opts.telegram_api_id,
+        opts.telegram_api_hash,
+        opts.print_outgoing.parse().expect("It must be a bool"),
+    );
 }

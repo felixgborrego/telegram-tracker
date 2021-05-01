@@ -1,21 +1,32 @@
 use std::fs::File;
 
+use chrono;
 use colored::Colorize;
 use log::{debug, error, info, warn};
-use rtdlib::types::*;
 use rtdlib::types::MessageContent::MessageText;
+use rtdlib::types::*;
 use telegram_client::api::Api;
 use telegram_client::client::Client;
-
 mod tgfn;
 mod thelp;
 
 fn on_new_message_in_room(msg: &String, chat_id: i64, sender_user_id: i64) {
     let line_msg = str::replace(msg, "\n", "; ");
-    println!("### chat {}/{}, msg==> {}", chat_id, sender_user_id, line_msg);
+    println!(
+        "### chat:{}; sender_id:{}; time:{:?}; msg:==> {}",
+        chat_id,
+        sender_user_id,
+        chrono::offset::Utc::now(),
+        line_msg
+    );
 }
 
-pub fn start(phone: String, telegram_api_id: String, telegram_api_hash: String) {
+pub fn start(
+    phone: String,
+    telegram_api_id: String,
+    telegram_api_hash: String,
+    print_outgoing: bool,
+) {
     let mut client = config();
     let listener = client.listener();
 
@@ -157,9 +168,10 @@ pub fn start(phone: String, telegram_api_id: String, telegram_api_hash: String) 
         Ok(())
     });
 
-    listener.on_update_new_message(|(_, update)| {
+    listener.on_update_new_message(move |(_, update)| {
         let message = update.message();
-        if message.is_outgoing() {
+        if message.is_outgoing() && print_outgoing == false {
+            debug!("Ignoring outgoing message ");
             return Ok(());
         }
         let content = message.content();
