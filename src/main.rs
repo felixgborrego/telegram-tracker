@@ -5,8 +5,8 @@ use simple_logger::SimpleLogger;
 
 #[derive(Clap)]
 #[clap(
-    version = "1.0",
-    author = "Felix G. Borrego K. <felix.g.borrego@gmail.com>"
+    version = "0.1.2",
+    author = "Felix G. Borrego <felix.g.borrego@gmail.com>"
 )]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {

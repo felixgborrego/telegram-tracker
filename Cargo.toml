@@ -1,6 +1,6 @@
 [package]
 name = "telegram-tracker"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Felix <felix.g.borrego@gmail.com>"]
 readme = "README.md"
 edition = "2018"

@@ -27,6 +27,9 @@ for building and running your application.
 LD_LIBRARY_PATH=lib cargo build --release
 ```
 
+* Build with Docker
+```docker build -t telegram-tracker:0.1.2 .```
+
 ## Run
 ```
 LD_LIBRARY_PATH=lib ./target/release/telegram_tracker  \

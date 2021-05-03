@@ -37,8 +37,8 @@ pub fn start(
                 TdlibParameters::builder()
                     .use_test_dc(false)
                     .database_directory("telegram_data")
-                    .use_message_database(false)
-                    //.use_secret_chats(true)
+                    .use_message_database(true)
+                    .use_secret_chats(true)
                     .api_id(toolkit::number::as_i64(&telegram_api_id).unwrap())
                     .api_hash(&telegram_api_hash)
                     .system_language_code("en")
@@ -46,6 +46,8 @@ pub fn start(
                     .system_version("Unknown")
                     .application_version(env!("CARGO_PKG_VERSION"))
                     .enable_storage_optimizer(true)
+                    .use_chat_info_database(true)
+                    .files_directory("telegram_data/files")
                     .build()
             ).build()).unwrap();
             debug!("Set tdlib parameters");
@@ -81,15 +83,13 @@ pub fn start(
         state.on_logging_out(|_| {
             //let mut have_authorization = have_authorization.lock().unwrap();
             //*have_authorization = false;
-            warn!("Logging out");
+            info!("⚠️ Logging out");
         });
         state.on_closing(|_| {
-            //let mut have_authorization = have_authorization.lock().unwrap();
-            //*have_authorization = false;
-            warn!("Closing");
+            warn!("⚠️Closing");
         });
         state.on_closed(|_| {
-            debug!("Closed");
+            warn!("⚠️Closed");
         });
         Ok(())
     });
@@ -98,13 +98,13 @@ pub fn start(
         let state = update.state();
         state
             .on_waiting_for_network(|_| {
-                debug!("waiting for network");
+                info!("waiting for network");
             })
             .on_connecting_to_proxy(|_| {
                 debug!("connecting to proxy");
             })
             .on_connecting(|_| {
-                debug!("connecting...");
+                info!("connecting...");
             })
             .on_updating(|_| {
                 info!("updating...");
@@ -216,15 +216,21 @@ pub fn start(
         );
         Ok(())
     });
+    listener.on_update_have_pending_notifications(|(_,update)| {
+        debug!("Chat last message: {:?}", update);
+        Ok(())
+    });
 
     listener.on_update_user(|(_, _)| {
         debug!("Update user");
         Ok(())
     });
+
     listener.on_update_have_pending_notifications(|(_, _)| {
         debug!("on_update_have_pending_notifications");
         Ok(())
     });
+
     listener.on_update_unread_chat_count(|(_, _)| {
         debug!("on_update_unread_chat_count");
         Ok(())
@@ -245,7 +251,7 @@ fn config() -> Client {
     File::create(&log_file).expect("Failed create log file");
     let api = Api::default();
 
-    Client::set_log_verbosity_level(2).unwrap(); // Only 0 error messages,  2 waring, 5 all
+    Client::set_log_verbosity_level(4).unwrap(); // Only 0 error messages,  2 waring, 5 all
     Client::set_log_file_path(log_file.to_str());
 
     let mut client = Client::new(api.clone());
