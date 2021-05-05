@@ -1,13 +1,12 @@
 [package]
 name = "telegram-tracker"
-version = "0.1.2"
+version = "0.1.4"
 authors = ["Felix <felix.g.borrego@gmail.com>"]
 readme = "README.md"
 edition = "2018"
 
 [dependencies]
 telegram-client = "1.6.3"
-#rtdlib = "1.6.3" # must be same as compiled
 rtdlib = { version = "=1.6.5", features = [ "sys" ] }
 
 log = "0.4"

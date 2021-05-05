@@ -1,12 +1,13 @@
 use std::{io, thread};
-
-use crate::telegram::{tgfn, thelp};
-use colored::Colorize;
 use std::io::Write;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::time::Duration;
+
+use colored::Colorize;
 use telegram_client::api::aevent::EventApi;
+
+use crate::{tgfn, thelp};
 
 pub fn typed() -> String {
     self::typed_with_message("")

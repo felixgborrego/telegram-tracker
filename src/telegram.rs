@@ -1,22 +1,61 @@
 use std::fs::File;
 
 use chrono;
+use chrono::Local;
 use colored::Colorize;
 use log::{debug, error, info, warn};
-use rtdlib::types::MessageContent::MessageText;
 use rtdlib::types::*;
+use rtdlib::types::MessageContent::*;
 use telegram_client::api::Api;
 use telegram_client::client::Client;
-mod tgfn;
-mod thelp;
 
-fn on_new_message_in_room(msg: &String, chat_id: i64, sender_user_id: i64) {
+use telegram_client::api::aevent::EventApi;
+use crate::{thelp, tgfn};
+
+fn on_new_message(event_info: String, message: &Message, only_channel_id: &Option<i64>) {
+    if message.is_outgoing() {
+        debug!("Ignoring outgoing message ");
+    }
+
+    let mut msg_text = "".to_string();
+
+    if let MessageText(text) = message.content() {
+        msg_text.push_str(text.text().text());
+    }
+    if let MessageVideo(video) = message.content() {
+        msg_text.push_str(video.caption().text());
+    }
+    if let MessagePhoto(photo) = message.content() {
+        msg_text.push_str(photo.caption().text());
+    }
+
+    if let MessageDocument(doc) = message.content() {
+        msg_text.push_str(doc.caption().text());
+    }
+
+    if *only_channel_id == Some(message.chat_id()) {
+        on_new_message_in_room(event_info, &msg_text, message.chat_id(), message.id(), message.sender_user_id());
+    } else {
+        info!("Ignoring message chat: {}; sender_id:{}; message_id: {}, time:{:?}; event_info: {}, msg: {}",
+                message.chat_id(),
+               message.sender_user_id(),
+               message.id(),
+               Local::now().to_rfc3339(),
+               event_info,
+               &msg_text
+        );
+    }
+}
+
+fn on_new_message_in_room(event_info: String, msg: &String, chat_id: i64, message_id: i64, sender_user_id: i64) {
     let line_msg = str::replace(msg, "\n", "; ");
     println!(
-        "### chat:{}; sender_id:{}; time:{:?}; msg:==> {}",
+        "### chat: {};sender_id: {};message_id: {}; time: {:?};event_info: {}; msg:==> {}",
         chat_id,
         sender_user_id,
-        chrono::offset::Utc::now(),
+        message_id,
+        Local::now().to_rfc3339(),
+        event_info,
         line_msg
     );
 }
@@ -26,6 +65,7 @@ pub fn start(
     telegram_api_id: String,
     telegram_api_hash: String,
     print_outgoing: bool,
+    follow_channel: Option<i64>,
 ) {
     let mut client = config();
     let listener = client.listener();
@@ -37,7 +77,7 @@ pub fn start(
                 TdlibParameters::builder()
                     .use_test_dc(false)
                     .database_directory("telegram_data")
-                    .use_message_database(true)
+                    .use_message_database(false)
                     .use_secret_chats(true)
                     .api_id(toolkit::number::as_i64(&telegram_api_id).unwrap())
                     .api_hash(&telegram_api_hash)
@@ -45,8 +85,8 @@ pub fn start(
                     .device_model("Android")
                     .system_version("Unknown")
                     .application_version(env!("CARGO_PKG_VERSION"))
-                    .enable_storage_optimizer(true)
-                    .use_chat_info_database(true)
+                    .enable_storage_optimizer(false)
+                    .use_chat_info_database(false)
                     .files_directory("telegram_data/files")
                     .build()
             ).build()).unwrap();
@@ -94,7 +134,7 @@ pub fn start(
         Ok(())
     });
 
-    listener.on_update_connection_state(|(_, update)| {
+    listener.on_update_connection_state(move |(api, update)| {
         let state = update.state();
         state
             .on_waiting_for_network(|_| {
@@ -109,7 +149,10 @@ pub fn start(
             .on_updating(|_| {
                 info!("updating...");
             })
-            .on_ready(|_| info!("📡 Connection ready! Listening..."));
+            .on_ready(|_| {
+                info!("📡 Connection ready! Listening...");
+                open_channel(&follow_channel, api)
+            });
         Ok(())
     });
 
@@ -139,6 +182,10 @@ pub fn start(
                 _ => {}
             },
             429 => thelp::wait_too_many_requests(api, &message),
+            3 => {
+                let result = api.get_chats(GetChats::builder().limit(100).build());
+                info!("⚠️ Chat request not found, trying to refresh channels...{:?}", result);
+            }
             _ => thelp::unknown(code, &message),
         };
         Ok(())
@@ -149,22 +196,35 @@ pub fn start(
         Ok(())
     });
 
-    listener.on_update_new_chat(|(_, update)| {
+    listener.on_chat(move |(api, chat)| {
+        info!("on_chat {:?}", chat);
+        open_channel(&follow_channel, api);
+        Ok(())
+    });
+    listener.on_update_new_chat(move |(api, update)| {
         let chat = update.chat();
-        debug!(
-            "Receive new chat, title: '{}', data: {}",
+        info!(
+            "Receive new chat, title: '{}', id: {}, title: {}",
             chat.title(),
-            chat.to_json().expect("Can't serialize json")
-        );
+            chat.id(), chat.title());
+
+        if follow_channel == Some(chat.id()) {
+            info!("📡 Found the required chat, opening...");
+            let result = api.open_chat(OpenChat::builder().chat_id(chat.id()).build());
+            info!("on_update_new_chat opening result: {:?}", result);
+        }
         Ok(())
     });
 
-    listener.on_update_user_status(|(_, update)| {
-        debug!(
-            "User [{}] status is {:?}",
-            update.user_id(),
-            update.status()
-        );
+    listener.on_update_user_status(move |(api, _)| {
+        open_channel(&follow_channel, api);
+        Ok(())
+    });
+
+    listener.on_update_delete_messages(move |(api, update)| {
+        let chat_id = update.chat_id();
+        info!("on_update_delete_messages chat_id {}", chat_id);
+        open_channel(&follow_channel, api);
         Ok(())
     });
 
@@ -174,71 +234,44 @@ pub fn start(
             debug!("Ignoring outgoing message ");
             return Ok(());
         }
-        let content = message.content();
-        content.on_message_text(|_| {
-            debug!("Receive text message ");
-        });
-
-        content.on_message_video(|_| {
-            debug!("Receive video message");
-        });
-
-        debug!(
-            "Receive new message, from: '{:?}', data: {}",
-            message.sender_user_id(),
-            message.to_json().expect("Can't serialize json")
-        );
-
-        let mut msg_text = "".to_string();
-
-        if let MessageText(text) = message.content() {
-            msg_text.push_str(text.text().text());
-        }
-
-        if let Some(message_photo) = content.as_message_photo() {
-            msg_text.push_str(message_photo.caption().text());
-        }
-
-        on_new_message_in_room(&msg_text, message.chat_id(), message.sender_user_id());
+        on_new_message("on_update_new_message".to_string(), message, &follow_channel);
         Ok(())
     });
 
-    listener.on_update_chat_last_message(|(_, update)| {
-        debug!(
-            "Chat last message: {}, data: {}",
-            update.chat_id(),
-            update
-                .last_message()
-                .clone()
-                .map_or("None".to_string(), |v| v
-                    .to_json()
-                    .expect("Can't serialize json"))
-        );
-        Ok(())
-    });
-    listener.on_update_have_pending_notifications(|(_,update)| {
-        debug!("Chat last message: {:?}", update);
-        Ok(())
-    });
-
-    listener.on_update_user(|(_, _)| {
-        debug!("Update user");
+    listener.on_update_chat_last_message(move |(_, _)| {
+        // update already sending with on_update_new_message
+        //     .last_message()
+        //     .clone()
+        //     .map(|v| on_new_message("on_update_chat_last_message".to_string(), &v, &follow_channel));
         Ok(())
     });
 
     listener.on_update_have_pending_notifications(|(_, _)| {
-        debug!("on_update_have_pending_notifications");
+        Ok(())
+    });
+
+    listener.on_update_user(|(_, _)| {
+        Ok(())
+    });
+
+    listener.on_update_have_pending_notifications(|(_, _)| {
         Ok(())
     });
 
     listener.on_update_unread_chat_count(|(_, _)| {
-        debug!("on_update_unread_chat_count");
         Ok(())
     });
 
     listener.on_update_selected_background(|_| Ok(()));
 
     client.daemon("Telegram-tracker").unwrap();
+}
+
+fn open_channel(follow_channel: &Option<i64>, api: &EventApi) {
+    if let Some(channel_id) = &follow_channel {
+        info!("📡 Opening channel to follow...");
+        let _ = api.open_chat(OpenChat::builder().chat_id(*channel_id).build());
+    }
 }
 
 // Configure client

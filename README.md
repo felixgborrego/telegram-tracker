@@ -36,6 +36,7 @@ LD_LIBRARY_PATH=lib ./target/release/telegram_tracker  \
          --phone <phone>  \
          --telegram-api-id <telegram-api-id>
          --telegram-api-hash <telegram-api-hash>
+         --follow-channel-id 1312345502
 ```
 
 

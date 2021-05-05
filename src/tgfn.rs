@@ -1,7 +1,7 @@
 use colored::Colorize;
 use rtdlib::types::*;
 
-use crate::telegram::thelp;
+use crate::thelp;
 use log::{debug, info};
 use telegram_client::api::aevent::EventApi;
 

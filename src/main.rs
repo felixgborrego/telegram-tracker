@@ -1,12 +1,15 @@
-mod telegram;
 use clap::{AppSettings, Clap};
 use log::LevelFilter;
 use simple_logger::SimpleLogger;
 
+mod tgfn;
+mod thelp;
+mod telegram;
+
 #[derive(Clap)]
 #[clap(
-    version = "0.1.2",
-    author = "Felix G. Borrego <felix.g.borrego@gmail.com>"
+version = "0.1.3",
+author = "Felix G. Borrego <felix.g.borrego@gmail.com>"
 )]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
@@ -18,24 +21,43 @@ struct Opts {
     telegram_api_hash: String,
     #[clap(long, default_value = "false")]
     print_outgoing: String,
+    #[clap(long)]
+    follow_channel_id: Option<String>,
 }
 
-fn main() {
+fn main(){
+    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
     let opts: Opts = Opts::parse();
 
     SimpleLogger::new()
         .with_level(LevelFilter::Info)
+        .with_module_level("telegram_client::api", LevelFilter::Info)
+        .with_module_level("telegram_client::handler", LevelFilter::Info)
         .init()
         .unwrap();
 
-    println!(
-        "Starting Telegram for: {}, api key: {}",
-        opts.phone, opts.telegram_api_id
-    );
+
+    let channel_id = opts.follow_channel_id.map(|id| format!("-100{}", id).parse::<i64>().expect("Expected a valid chat_id"));
+
+    if let Some(id) = channel_id {
+        println!(
+            "Starting Telegram Tracker {} following channel  {} for: {}, api key: {}",
+            VERSION,id, opts.phone, opts.telegram_api_id
+        );
+    } else {
+        println!(
+            "Starting Telegram Tracker {} for: {}, api key: {}", VERSION,
+            opts.phone, opts.telegram_api_id
+        );
+    }
+
+
     telegram::start(
         opts.phone,
         opts.telegram_api_id,
         opts.telegram_api_hash,
         opts.print_outgoing.parse().expect("It must be a bool"),
+        channel_id,
     );
 }
