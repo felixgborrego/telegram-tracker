@@ -50,7 +50,7 @@ fn on_new_message(event_info: String, message: &Message, only_channel_id: &Optio
 fn on_new_message_in_room(event_info: String, msg: &String, chat_id: i64, message_id: i64, sender_user_id: i64) {
     let line_msg = str::replace(msg, "\n", "; ");
     println!(
-        "### chat: {};sender_id: {};message_id: {}; time: {:?};event_info: {}; msg:==> {}",
+        "### chat: {};sender_id: {};message_id: {};time: {:?};event_info: {}; msg:==> {}",
         chat_id,
         sender_user_id,
         message_id,
