@@ -1,4 +1,4 @@
-# Telegram precompiled libs following
+# Telegram precompiled 1.7.0 libs following
 
 Build and install following https://github.com/tdlib/td#installing-dependencies
 ```

@@ -1,8 +1,7 @@
-use colored::Colorize;
-use rtdlib::types::*;
-
 use crate::thelp;
+use colored::Colorize;
 use log::{debug, info};
+use rtdlib::types::*;
 use telegram_client::api::aevent::EventApi;
 
 pub fn type_phone_number(api: &EventApi) {
@@ -13,6 +12,7 @@ pub fn type_phone_number(api: &EventApi) {
             .build(),
     )
     .unwrap();
+
     debug!(
         "Set phone number [{}] {}",
         input.green(),
@@ -35,7 +35,8 @@ pub fn type_and_register(api: &EventApi) {
         RegisterUser::builder()
             .first_name(first_name)
             .last_name(last_name)
-            .build(),
+            .build()
+            .as_ref(),
     )
     .unwrap();
 }

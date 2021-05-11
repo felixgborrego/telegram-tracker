@@ -11,13 +11,14 @@ If you somehow are still interested, you will get something like this, with the 
 
 * Get your Telegram API and Hash —  which can be obtained at https://my.telegram.org.
 
-Other than the `crate` declared at `Cargo.toml`, this crate needs `tdjson 1.6.0 dylib` in your path
+Other than the `crate` declared at `Cargo.toml`, this crate needs `tdjson 1.7.0 dylib` in your path
 for building and running your application.
 
 * Install the dependencies: 
   `brew install gperf cmake openssl`  
 
-* Add the libtdjson dynamic library to path (warning: it must be 1.6.0): 
+* Add the libtdjson dynamic library to path (warning: it must be 1.7.0). 
+  You can compile it following the [Tdlib build instructions](https://github.com/tdlib/td#building)
   ```
   export LD_LIBRARY_PATH=$PWD/lib/
   ```
@@ -28,7 +29,7 @@ LD_LIBRARY_PATH=lib cargo build --release
 ```
 
 * Build with Docker
-```docker build -t telegram-tracker:0.1.2 .```
+```docker build -t telegram-tracker:0.1.5 .```
 
 ## Run
 ```

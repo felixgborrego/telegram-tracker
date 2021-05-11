@@ -5,7 +5,7 @@ RUN apt install -y g++ ccache openssl cmake gperf make git libssl-dev libreadlin
 RUN openssl version
 RUN uname -a
 WORKDIR /
-RUN  git clone --depth 1 --branch v1.6.0 https://github.com/tdlib/td.git /td
+RUN  git clone --depth 1 --branch v1.7.0 https://github.com/tdlib/td.git /td
 WORKDIR /td
 RUN mkdir build
 WORKDIR build

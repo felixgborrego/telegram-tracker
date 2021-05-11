@@ -1,16 +1,17 @@
 use std::fs::File;
+use std::thread;
 
 use chrono;
 use chrono::Local;
 use colored::Colorize;
 use log::{debug, error, info, warn};
-use rtdlib::types::*;
 use rtdlib::types::MessageContent::*;
+use rtdlib::types::*;
+use telegram_client::api::aevent::EventApi;
 use telegram_client::api::Api;
 use telegram_client::client::Client;
 
-use telegram_client::api::aevent::EventApi;
-use crate::{thelp, tgfn};
+use crate::{tgfn, thelp};
 
 fn on_new_message(event_info: String, message: &Message, only_channel_id: &Option<i64>) {
     if message.is_outgoing() {
@@ -34,25 +35,43 @@ fn on_new_message(event_info: String, message: &Message, only_channel_id: &Optio
     }
 
     if *only_channel_id == Some(message.chat_id()) {
-        on_new_message_in_room(event_info, &msg_text, message.chat_id(), message.id(), message.sender_user_id());
+        on_new_message_in_room(
+            event_info,
+            &msg_text,
+            message.chat_id(),
+            message.id(),
+            message.sender(),
+        );
     } else {
-        info!("Ignoring message chat: {}; sender_id:{}; message_id: {}, time:{:?}; event_info: {}, msg: {}",
-                message.chat_id(),
-               message.sender_user_id(),
-               message.id(),
-               Local::now().to_rfc3339(),
-               event_info,
-               &msg_text
+        info!(
+            "Ignoring message chat: {}; message_id: {}, time:{:?}; event_info: {}, msg: {}",
+            message.chat_id(),
+            message.id(),
+            Local::now().to_rfc3339(),
+            event_info,
+            &msg_text
         );
     }
 }
 
-fn on_new_message_in_room(event_info: String, msg: &String, chat_id: i64, message_id: i64, sender_user_id: i64) {
+fn on_new_message_in_room(
+    event_info: String,
+    msg: &String,
+    chat_id: i64,
+    message_id: i64,
+    sender: &MessageSender,
+) {
+    let sender_id = match sender {
+        MessageSender::_Default(d) => -1,
+        MessageSender::Chat(c) => c.chat_id(),
+        MessageSender::User(u) => u.user_id(),
+    };
+
     let line_msg = str::replace(msg, "\n", "; ");
     println!(
         "### chat: {};sender_id: {};message_id: {};time: {:?};event_info: {}; msg:==> {}",
         chat_id,
-        sender_user_id,
+        sender_id,
         message_id,
         Local::now().to_rfc3339(),
         event_info,
@@ -66,8 +85,29 @@ pub fn start(
     telegram_api_hash: String,
     print_outgoing: bool,
     follow_channel: Option<i64>,
+) -> Api {
+    let (mut client, api) = config();
+    thread::spawn(move || {
+        start_telegram_tracking(
+            client,
+            phone,
+            telegram_api_id,
+            telegram_api_hash,
+            print_outgoing,
+            follow_channel,
+        );
+    });
+    api
+}
+
+fn start_telegram_tracking(
+    mut client: Client,
+    phone: String,
+    telegram_api_id: String,
+    telegram_api_hash: String,
+    print_outgoing: bool,
+    follow_channel: Option<i64>,
 ) {
-    let mut client = config();
     let listener = client.listener();
 
     listener.on_update_authorization_state(move |(api, update)| {
@@ -184,7 +224,10 @@ pub fn start(
             429 => thelp::wait_too_many_requests(api, &message),
             3 => {
                 let result = api.get_chats(GetChats::builder().limit(100).build());
-                info!("⚠️ Chat request not found, trying to refresh channels...{:?}", result);
+                info!(
+                    "⚠️ Chat request not found, trying to refresh channels...{:?}",
+                    result
+                );
             }
             _ => thelp::unknown(code, &message),
         };
@@ -206,7 +249,9 @@ pub fn start(
         info!(
             "Receive new chat, title: '{}', id: {}, title: {}",
             chat.title(),
-            chat.id(), chat.title());
+            chat.id(),
+            chat.title()
+        );
 
         if follow_channel == Some(chat.id()) {
             info!("📡 Found the required chat, opening...");
@@ -234,7 +279,11 @@ pub fn start(
             debug!("Ignoring outgoing message ");
             return Ok(());
         }
-        on_new_message("on_update_new_message".to_string(), message, &follow_channel);
+        on_new_message(
+            "on_update_new_message".to_string(),
+            message,
+            &follow_channel,
+        );
         Ok(())
     });
 
@@ -246,21 +295,13 @@ pub fn start(
         Ok(())
     });
 
-    listener.on_update_have_pending_notifications(|(_, _)| {
-        Ok(())
-    });
+    listener.on_update_have_pending_notifications(|(_, _)| Ok(()));
 
-    listener.on_update_user(|(_, _)| {
-        Ok(())
-    });
+    listener.on_update_user(|(_, _)| Ok(()));
 
-    listener.on_update_have_pending_notifications(|(_, _)| {
-        Ok(())
-    });
+    listener.on_update_have_pending_notifications(|(_, _)| Ok(()));
 
-    listener.on_update_unread_chat_count(|(_, _)| {
-        Ok(())
-    });
+    listener.on_update_unread_chat_count(|(_, _)| Ok(()));
 
     listener.on_update_selected_background(|_| Ok(()));
 
@@ -270,12 +311,19 @@ pub fn start(
 fn open_channel(follow_channel: &Option<i64>, api: &EventApi) {
     if let Some(channel_id) = &follow_channel {
         info!("📡 Opening channel to follow...");
+        let option_value: OptionValueBoolean = OptionValueBoolean::builder().value(true).build();
+        api.set_option(
+            SetOption::builder()
+                .name("online")
+                .value(OptionValue::Boolean(option_value)),
+        );
+
         let _ = api.open_chat(OpenChat::builder().chat_id(*channel_id).build());
     }
 }
 
 // Configure client
-fn config() -> Client {
+fn config() -> (Client, Api) {
     // Log File
     let log_file = toolkit::path::root_dir().join("telegram_logs.log");
     if log_file.exists() {
@@ -290,5 +338,5 @@ fn config() -> Client {
     let mut client = Client::new(api.clone());
     client.warn_unregister_listener(false); // No show errors for unregistered listeners
 
-    client
+    (client, api)
 }

@@ -1,8 +1,8 @@
-use std::{io, thread};
 use std::io::Write;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::time::Duration;
+use std::{io, thread};
 
 use colored::Colorize;
 use telegram_client::api::aevent::EventApi;
