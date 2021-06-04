@@ -29,7 +29,7 @@ LD_LIBRARY_PATH=lib cargo build --release
 ```
 
 * Build with Docker
-```docker build -t telegram-tracker:0.1.5 .```
+```docker build -t telegram_tracker:0.1.6 .```
 
 ## Run
 ```

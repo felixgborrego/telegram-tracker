@@ -2,7 +2,7 @@ use std::fs::File;
 use std::thread;
 
 use chrono;
-use chrono::Local;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use colored::Colorize;
 use log::{debug, error, info, warn};
 use rtdlib::types::MessageContent::*;
@@ -11,9 +11,15 @@ use telegram_client::api::aevent::EventApi;
 use telegram_client::api::Api;
 use telegram_client::client::Client;
 
-use crate::{tgfn, thelp};
+use crate::{tgfn, thelp, TelegramMessage};
+use std::sync::mpsc::SyncSender;
 
-fn on_new_message(event_info: String, message: &Message, only_channel_id: &Option<i64>) {
+fn on_new_message(
+    event_info: String,
+    message: &Message,
+    only_channel_id: &Option<i64>,
+    message_sender: SyncSender<TelegramMessage>,
+) {
     if message.is_outgoing() {
         debug!("Ignoring outgoing message ");
     }
@@ -34,49 +40,39 @@ fn on_new_message(event_info: String, message: &Message, only_channel_id: &Optio
         msg_text.push_str(doc.caption().text());
     }
 
-    if *only_channel_id == Some(message.chat_id()) {
-        on_new_message_in_room(
+    let msg_text = str::replace(&*msg_text, "\n", "; "); // one msg per line
+
+    let naive = NaiveDateTime::from_timestamp(message.date(), 0);
+
+    // Create a normal DateTime from the NaiveDateTime
+    let sent_datetime: DateTime<Utc> = DateTime::from_utc(naive, Utc);
+
+    let sender_id = match message.sender() {
+        MessageSender::_Default(_) => -1,
+        MessageSender::Chat(c) => c.chat_id(),
+        MessageSender::User(u) => u.user_id(),
+    };
+
+    if *only_channel_id == Some(message.chat_id()) || only_channel_id.is_none() {
+        let msg = TelegramMessage {
             event_info,
-            &msg_text,
-            message.chat_id(),
-            message.id(),
-            message.sender(),
-        );
+            msg_text,
+            chat_id: message.chat_id(),
+            message_id: message.id(),
+            sender_id,
+            sent_datetime,
+        };
+        message_sender.send(msg).unwrap();
     } else {
         info!(
             "Ignoring message chat: {}; message_id: {}, time:{:?}; event_info: {}, msg: {}",
             message.chat_id(),
             message.id(),
-            Local::now().to_rfc3339(),
+            sent_datetime,
             event_info,
             &msg_text
         );
     }
-}
-
-fn on_new_message_in_room(
-    event_info: String,
-    msg: &String,
-    chat_id: i64,
-    message_id: i64,
-    sender: &MessageSender,
-) {
-    let sender_id = match sender {
-        MessageSender::_Default(d) => -1,
-        MessageSender::Chat(c) => c.chat_id(),
-        MessageSender::User(u) => u.user_id(),
-    };
-
-    let line_msg = str::replace(msg, "\n", "; ");
-    println!(
-        "### chat: {};sender_id: {};message_id: {};time: {:?};event_info: {}; msg:==> {}",
-        chat_id,
-        sender_id,
-        message_id,
-        Local::now().to_rfc3339(),
-        event_info,
-        line_msg
-    );
 }
 
 pub fn start(
@@ -85,8 +81,9 @@ pub fn start(
     telegram_api_hash: String,
     print_outgoing: bool,
     follow_channel: Option<i64>,
+    message_sender: SyncSender<TelegramMessage>,
 ) -> Api {
-    let (mut client, api) = config();
+    let (client, api) = config();
     thread::spawn(move || {
         start_telegram_tracking(
             client,
@@ -95,6 +92,7 @@ pub fn start(
             telegram_api_hash,
             print_outgoing,
             follow_channel,
+            message_sender.clone(),
         );
     });
     api
@@ -107,8 +105,10 @@ fn start_telegram_tracking(
     telegram_api_hash: String,
     print_outgoing: bool,
     follow_channel: Option<i64>,
+    message_sender: SyncSender<TelegramMessage>,
 ) {
     let listener = client.listener();
+    let data_directory = format!("telegram_data-{}", follow_channel.unwrap_or(0));
 
     listener.on_update_authorization_state(move |(api, update)| {
         let state = update.authorization_state();
@@ -116,7 +116,7 @@ fn start_telegram_tracking(
             api.set_tdlib_parameters(SetTdlibParameters::builder().parameters(
                 TdlibParameters::builder()
                     .use_test_dc(false)
-                    .database_directory("telegram_data")
+                    .database_directory(&data_directory)
                     .use_message_database(false)
                     .use_secret_chats(true)
                     .api_id(toolkit::number::as_i64(&telegram_api_id).unwrap())
@@ -127,7 +127,7 @@ fn start_telegram_tracking(
                     .application_version(env!("CARGO_PKG_VERSION"))
                     .enable_storage_optimizer(false)
                     .use_chat_info_database(false)
-                    .files_directory("telegram_data/files")
+                    .files_directory(format!("{}/files", &data_directory))
                     .build()
             ).build()).unwrap();
             debug!("Set tdlib parameters");
@@ -235,7 +235,7 @@ fn start_telegram_tracking(
     });
 
     listener.on_ok(|_| {
-        debug!("OK");
+        //debug!("OK");
         Ok(())
     });
 
@@ -283,17 +283,12 @@ fn start_telegram_tracking(
             "on_update_new_message".to_string(),
             message,
             &follow_channel,
+            message_sender.clone(),
         );
         Ok(())
     });
 
-    listener.on_update_chat_last_message(move |(_, _)| {
-        // update already sending with on_update_new_message
-        //     .last_message()
-        //     .clone()
-        //     .map(|v| on_new_message("on_update_chat_last_message".to_string(), &v, &follow_channel));
-        Ok(())
-    });
+    listener.on_update_chat_last_message(move |(_, _)| Ok(()));
 
     listener.on_update_have_pending_notifications(|(_, _)| Ok(()));
 
@@ -310,13 +305,14 @@ fn start_telegram_tracking(
 
 fn open_channel(follow_channel: &Option<i64>, api: &EventApi) {
     if let Some(channel_id) = &follow_channel {
-        info!("📡 Opening channel to follow...");
+        //info!("📡 Opening channel to follow...");
         let option_value: OptionValueBoolean = OptionValueBoolean::builder().value(true).build();
         api.set_option(
             SetOption::builder()
                 .name("online")
                 .value(OptionValue::Boolean(option_value)),
-        );
+        )
+        .unwrap();
 
         let _ = api.open_chat(OpenChat::builder().chat_id(*channel_id).build());
     }

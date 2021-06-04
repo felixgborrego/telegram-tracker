@@ -16,7 +16,7 @@ RUN cmake cmake --install .
 
 
 
-FROM rust as telegram-tracker-builder
+FROM rust as telegram_tracker-builder
 WORKDIR app
 # Build dependencies
 COPY Cargo.toml /app/Cargo.toml
@@ -34,7 +34,7 @@ FROM debian:9 as runtime
 WORKDIR app
 RUN apt -y update && apt install -y g++ ccache openssl && rm -rf /var/lib/apt/lists/*
 ENV LD_LIBRARY_PATH="/app/:${LD_LIBRARY_PATH}"
-COPY --from=telegram-tracker-builder /app/target/release/telegram-tracker /app
+COPY --from=telegram_tracker-builder /app/target/release/telegram_tracker /app
 COPY --from=tdlib-builder /td/build/libtd* /app
 
-ENTRYPOINT ["/app/telegram-tracker"]
+ENTRYPOINT ["/app/telegram_tracker"]
