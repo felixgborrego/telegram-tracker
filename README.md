@@ -1,9 +1,12 @@
 # Telegram Tracker CLI
-**WARNING**: This is just an excuse to learn Rust, nothing fancy to see in this Repo!.
 
-I didn't even complete the first 10 chapters of [The Book](https://doc.rust-lang.org/book/).
+> [!WARNING]
+> This is a POC to experiment with Rust and async programing, nothing fancy to see in this Repo!
 
-If you somehow are still interested, you will get something like this, with the Telegram tracker printing in your terminal all the incoming messages:
+This CLI streams messages from a Telegram channel directly to your stdout/terminal, displaying all incoming messages in real time. 
+
+While this feature alone may seem limited, it serves as a foundation for building more interesting and advanced use cases on top of it (For instance, I'm integrating it with a Binance API to automatically execute buy/sell orders based on incoming messages).
+
 
 ![cli](docs/telegram_tracker_img.png)
 
